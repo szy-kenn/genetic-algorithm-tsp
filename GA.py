@@ -107,7 +107,6 @@ class GeneticAlgorithm:
 
         self.p1_score = self.fitness(self.p1)
         self.p2_score = self.fitness(self.p2)
-
       else:
         # select random Parent 2
         temp_p2 = self.select_random()
@@ -283,6 +282,7 @@ class GeneticAlgorithm:
       self.axis[axis_idx].set_xticks(range(17))
       self.axis[axis_idx].set_yticks(range(12))
       self.axis[axis_idx].grid(color='#2A3459', alpha=0.25)
+      self.axis[axis_idx].set_aspect("equal")
 
       tmp_array = []
       for i in plots:
