@@ -18,15 +18,27 @@ class GeneticAlgorithm:
     since the algorithm uses PMX, this defines the size of the middle segmentation
   mutation_probability: int
     defines how many genes (places) will be swapped in the mutation operator
+  acceptance_threshold: float
+    defines how many more percentage of the Parent 1 can still be accepted as Parent 2
+    (defaults to 0.2)
+  random_iteration_limit: int
+    defines the maximum iteration of randomized selection of parents before choosing the existing better solution
+    (defaults to 100)
   """
   
 
-  def __init__(self, pos_array, labels, max_gen, crossover_probability, mutation_probability):
+  def __init__(self, pos_array, labels, max_gen, crossover_probability, 
+               mutation_probability, acceptance_threshold=0.2, random_iteration_limit=100):
     
     self.max_gen = max_gen
     self.pos_array = pos_array
     self.labels = labels
-    
+    self.acceptance_threshold = acceptance_threshold
+    self.random_iteration_limit = random_iteration_limit
+        
+    # gen counter
+    self.current_gen = 0
+
     # pre-initialization parameter checking
     if crossover_probability > len(self.pos_array) - 2:
       raise ValueError(f"Crossover probability ({crossover_probability}) should allow for a 3-part segmentation.")
@@ -47,49 +59,8 @@ class GeneticAlgorithm:
     self.best_solution = []
 
     # holds the list of fitness scores of all found best solutions  
-    self.plots = []
-
-  def _add_generated_solution(self, solution: list):
-    """
-    Adds the solution to the list of already created solutions
-    """
-
-    stringified = "".join(str(gene) for gene in solution)
-    self.created_solutions.append(stringified)
-
-  def _generate_random_solution(self) -> list[int]:
-    """
-    Returns a random order of list containing integers 0 to 9
-    """
-    
-    _tmp = list(range(len(self.pos_array)))
-    random.shuffle(_tmp)
-    return _tmp
-  
-  def _get_distance(self, pt1, pt2):
-    """
-    Returns the distance of two points using the distance formula
-    """
-
-    return sqrt(
-          (self.pos_array[pt2][0] - self.pos_array[pt1][0]) * (self.pos_array[pt2][0] - self.pos_array[pt1][0]) + 
-          (self.pos_array[pt2][1] - self.pos_array[pt1][1]) * (self.pos_array[pt2][1] - self.pos_array[pt1][1])
-          )
-  
-  def initialize(self):
-    """
-    Initialize 2 random parents and graphs
-    """
-
-    # parents 1 and 2
-    self.p1 = self._generate_random_solution()
-    self.p2 = self._generate_random_solution()
-
-    self._add_generated_solution(self.p1)
-    self._add_generated_solution(self.p2)
-
-    # gen counter
-    self.current_gen = 0
+    self.p1_plots = []
+    self.p2_plots = []
 
     plt.style.use("seaborn-v0_8-dark-palette")
     self.figure, self.axis = plt.subplots(1, 2, figsize=(16, 7))
@@ -102,53 +73,61 @@ class GeneticAlgorithm:
     self.axis[1].set_yticks(range(12))
     self.axis[1].grid(color='#2A3459', alpha=0.25)
 
+  def _add_generated_solutions(self, *args: list):
+    """
+    Adds the solution to the list of already created solutions
+    """
+
+    for solution in args:
+      stringified = "".join(str(gene) for gene in solution)
+      if stringified not in self.created_solutions:
+        self.created_solutions.append(stringified)
+
+  def _get_distance(self, pt1, pt2):
+    """
+    Returns the distance of two points using the distance formula
+    """
+
+    return sqrt(
+          (self.pos_array[pt2][0] - self.pos_array[pt1][0]) * (self.pos_array[pt2][0] - self.pos_array[pt1][0]) + 
+          (self.pos_array[pt2][1] - self.pos_array[pt1][1]) * (self.pos_array[pt2][1] - self.pos_array[pt1][1])
+          )
+  
   def start(self):
     """
     Main loop of the simulation
     """
     
-    self.initialize()
+    # ---------- Generation 0 ----------
 
+    self.p1 = self.select_random()
+    self.p2 = self.select_random()
+
+    self.p1_score = self.fitness(self.p1)
+    self.p2_score = self.fitness(self.p2)
+
+    c1, c2 = self.crossover(self.p1, self.p2)
+
+    self.c1, self.c2 = self.mutate(c1), self.mutate(c2)
+
+    c1_score, c2_score = self.fitness(self.c1), self.fitness(self.c2)
+
+    # add all generated solutions in created_solutions list
+    self._add_generated_solutions(self.p1, self.p2, self.c1, self.c2)
+
+    # get the better offspring (lower cost) and make it the Parent 1 for the next generation
+    self.p1 = self.c1 if c1_score < c2_score else self.c2
+    self.p1_score = self.fitness(self.p1)
+
+    # increment the generation
+    self.current_gen += 1
+
+    # ---------- Main Loop ----------
     while self.current_gen < self.max_gen:
 
-      # sets how often the graph for distance/gen will update
-      if (self.current_gen % 20 == 0):
-        self.update_plot(0, self.plots)
-
-      # evaluate 2 parents  
-      p1_score = self.fitness(self.p1)
-      p2_score = self.fitness(self.p2)
-
-      better_parent = self.p1 if p1_score < p2_score else self.p2
-
-      # offsprings 1 and 2
-      c1, c2 = self.crossover(self.p1, self.p2)
-
-      # print("Parents: ", self.p1, self.p2)
-      # print("Children: ", c1, c2)
-
-      c1 = self.mutate(c1)
-      c2 = self.mutate(c2)
-      
-      c1_score = self.fitness(c1)
-      c2_score = self.fitness(c2)
-
-      # get the better offspring (lower cost) and make it the parent1 for the next generation
-      self.p1 = c1 if c1_score < c2_score else c2
-      self._add_generated_solution(c1 if c1_score > c2_score else c2)
-
-      if self.fitness(self.p1) < self.fitness(self.best_solution):
-        # a new best solution was found
-        self.best_solution = self.p1
-        self.update_plot(1, self.best_solution)
-        print(f"New best solution on Generation {self.current_gen}: {self.fitness(self.best_solution)}")
-
-      self.plots.append(self.fitness(self.best_solution))
-
-      # generate new random p2
-      temp_p2 = self._generate_random_solution()
-
-      self.current_gen += 1
+      # select random Parent 2
+      temp_p2 = self.select_random()
+      better_parent = self.p1 if self.p1_score  < self.p2_score else self.p2
 
       # a base condition is added here to prevent long / infinite loop 
       """
@@ -158,9 +137,9 @@ class GeneticAlgorithm:
       """
       count = 0
       while (("".join(str(gene) for gene in temp_p2) in self.created_solutions 
-              or self.fitness(temp_p2) > (self.fitness(self.p1) * 1.2))
-              and count < 100):
-        temp_p2 = self._generate_random_solution()
+              or self.fitness(temp_p2) > (self.fitness(self.p1) * (1 + self.acceptance_threshold)))
+              and count < self.random_iteration_limit):
+        temp_p2 = self.select_random()
         count += 1
 
       if count != 100:
@@ -173,9 +152,65 @@ class GeneticAlgorithm:
         else:
           self.p2 = better_parent
 
+      # sets how often the graph for distance/gen will update
+      self.update_plot(0, (self.p1_plots, self.p2_plots))
+
+      # evaluate 2 parents  
+      self.p1_score = self.fitness(self.p1)
+      self.p2_score = self.fitness(self.p2)
+
+      self.p1_plots.append(self.p1_score)
+      self.p2_plots.append(self.p2_score)
+
+      # offsprings 1 and 2
+      c1, c2 = self.crossover(self.p1, self.p2)
+      self.c1, self.c2 = self.mutate(c1), self.mutate(c2)
+      c1_score, c2_score = self.fitness(self.c1), self.fitness(self.c2)
+    
+      count = 0
+      tmp_children = []
+      while (((c1_score > (self.p1_score * (1 + self.acceptance_threshold)) and c1_score > (self.p2_score * (1 + self.acceptance_threshold))) or
+             (c2_score > (self.p1_score * (1 + self.acceptance_threshold)) and c2_score > (self.p2_score * (1 + self.acceptance_threshold)))) and 
+              count < self.random_iteration_limit):
+        c1, c2 = self.crossover(self.p1, self.p2)
+        self.c1, self.c2 = self.mutate(c1), self.mutate(c2)
+        c1_score, c2_score = self.fitness(self.c1), self.fitness(self.c2)
+        tmp_children.append(self.c1)
+        tmp_children.append(self.c2)
+        count += 1
+
+      if count == self.random_iteration_limit:
+        tmp_children.sort(key=self.fitness)
+        self.c1 = tmp_children[0]
+        self.c2 = tmp_children[1]
+
+      # check if a new best solution was found
+      if self.p1_score < self.fitness(self.best_solution) or self.p2_score < self.fitness(self.best_solution):
+        self.best_solution = self.p1 if self.p1_score < self.p2_score else self.p2
+        self.update_plot(1, self.best_solution)
+        print(f"New best solution on Generation {self.current_gen}: {self.fitness(self.best_solution)}")
+
+      # add all generated solutions in created_solutions list
+      self._add_generated_solutions(self.p1, self.p2, self.c1, self.c2)
+
+      # get the better offspring (lower cost) and make it the Parent 1 for the next generation
+      self.p1 = self.c1 if c1_score < c2_score else self.c2
+
+      # increment generation
+      self.current_gen += 1
+
     plt.show()
     return self.best_solution
-      
+  
+  def select_random(self) -> list[int]:
+    """
+    Returns a random order of list containing integers 0 to 9
+    """
+    
+    _tmp = list(range(len(self.pos_array)))
+    random.shuffle(_tmp)
+    return _tmp
+  
   def crossover(self, parent1, parent2):
     """
     Perform PMX to the two passed parents
@@ -250,13 +285,13 @@ class GeneticAlgorithm:
     self.axis[axis_idx].cla()
 
     if axis_idx == 0: 
-      self.axis[axis_idx].set_title("Distance of Best Solution Every Generation")
+      self.axis[axis_idx].set_title("Distance of Solutions Every Generation")
       self.axis[axis_idx].set_xlabel("Generations")
       self.axis[axis_idx].set_ylabel("Distance")
-      self.axis[axis_idx].plot(plots)
-
+      self.axis[axis_idx].plot(plots[0], label="Average Fitness Score", alpha=0.5)
+      self.axis[axis_idx].plot(plots[1], label="Best Fitness Score")
+      self.axis[axis_idx].legend(loc="upper left")
     else:
-
       self.axis[axis_idx].set_title(f"Best Path: {plots} \nDistance: {self.fitness(plots)}")
       self.axis[axis_idx].set_xticks(range(17))
       self.axis[axis_idx].set_yticks(range(12))
@@ -293,6 +328,6 @@ max_gen = 5000
 crossover_prob = 4 
 mutation_prob = 4
 
-GA = GeneticAlgorithm(pos_array, labels, max_gen, crossover_prob, mutation_prob)
+GA = GeneticAlgorithm(pos_array, labels, max_gen, crossover_prob, mutation_prob, acceptance_threshold=.05)
 bs = GA.start()
 print("Best: ", bs, GA.fitness(bs))
