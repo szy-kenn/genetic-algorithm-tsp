@@ -237,9 +237,8 @@ class GeneticAlgorithm:
       while random_pt2 == random_pt1:
         random_pt2 = random.randint(0, len(solution) - 1)
 
-      tmp = solution[random_pt1]
-      solution[random_pt1] = solution[random_pt2]
-      solution[random_pt2] = tmp
+      # swapping
+      solution[random_pt1], solution[random_pt2] = solution[random_pt2], solution[random_pt1]
 
     return solution
 
