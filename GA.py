@@ -97,63 +97,47 @@ class GeneticAlgorithm:
     """
     Main loop of the simulation
     """
-    
-    # ---------- Generation 0 ----------
-
-    self.p1 = self.select_random()
-    self.p2 = self.select_random()
-
-    self.p1_score = self.fitness(self.p1)
-    self.p2_score = self.fitness(self.p2)
-
-    c1, c2 = self.crossover(self.p1, self.p2)
-
-    self.c1, self.c2 = self.mutate(c1), self.mutate(c2)
-
-    c1_score, c2_score = self.fitness(self.c1), self.fitness(self.c2)
-
-    # add all generated solutions in created_solutions list
-    self._add_generated_solutions(self.p1, self.p2, self.c1, self.c2)
-
-    # get the better offspring (lower cost) and make it the Parent 1 for the next generation
-    self.p1 = self.c1 if c1_score < c2_score else self.c2
-    self.p1_score = self.fitness(self.p1)
-
-    # increment the generation
-    self.current_gen += 1
 
     # ---------- Main Loop ----------
     while self.current_gen < self.max_gen:
 
-      # select random Parent 2
-      temp_p2 = self.select_random()
-      better_parent = self.p1 if self.p1_score  < self.p2_score else self.p2
+      if self.current_gen == 0:
+        self.p1 = self.select_random()
+        self.p2 = self.select_random()
 
-      # a base condition is added here to prevent long / infinite loop 
-      """
-      This will iteratively generate a random solution WHILE the created solution has already been created (existing in created_solutions)
-      OR the created solution's fitness score is more than 1.2x higher than the Parent 1
-      AND the counter has not reached the maximum iteration (100)
-      """
-      count = 0
-      while (("".join(str(gene) for gene in temp_p2) in self.created_solutions 
-              or self.fitness(temp_p2) > (self.fitness(self.p1) * (1 + self.acceptance_threshold)))
-              and count < self.random_iteration_limit):
-        temp_p2 = self.select_random()
-        count += 1
+        self.p1_score = self.fitness(self.p1)
+        self.p2_score = self.fitness(self.p2)
 
-      if count != 100:
-        # if the loop stops before reaching the maximum iteration, then the randomly created solution is a valid Parent 2
-        self.p2 = temp_p2 if self.fitness(temp_p2) < self.fitness(better_parent) else better_parent
       else:
-        # 50% chance to be the better parent of the current generation and 50% to be the best solution
-        if random.randint(0, 1) == 1:
-          self.p2 = self.best_solution
+        # select random Parent 2
+        temp_p2 = self.select_random()
+        better_parent = self.p1 if self.p1_score  < self.p2_score else self.p2
+
+        # a base condition is added here to prevent long / infinite loop 
+        """
+        This will iteratively generate a random solution WHILE the created solution has already been created (existing in created_solutions)
+        OR the created solution's fitness score is more than 1.2x higher than the Parent 1
+        AND the counter has not reached the maximum iteration (100)
+        """
+        count = 0
+        while ((self.fitness(temp_p2) > (self.fitness(self.p1) * (1 + self.acceptance_threshold)))
+                and count < self.random_iteration_limit):
+          temp_p2 = self.select_random()
+          count += 1
+
+        if count != 100:
+          # if the loop stops before reaching the maximum iteration, then the randomly created solution is a valid Parent 2
+          self.p2 = temp_p2 if self.fitness(temp_p2) < self.fitness(better_parent) else better_parent
         else:
-          self.p2 = better_parent
+          # 50% chance to be the better parent of the current generation and 50% to be the best solution
+          if random.randint(0, 1) == 1:
+            self.p2 = self.best_solution
+          else:
+            self.p2 = better_parent
 
       # sets how often the graph for distance/gen will update
-      self.update_plot(0, (self.p1_plots, self.p2_plots))
+      if (self.current_gen < 20 or self.current_gen % 20 == 0):
+        self.update_plot(0, (self.p1_plots, self.p2_plots))
 
       # evaluate 2 parents  
       self.p1_score = self.fitness(self.p1)
@@ -162,7 +146,7 @@ class GeneticAlgorithm:
       self.p1_plots.append(self.p1_score)
       self.p2_plots.append(self.p2_score)
 
-      # offsprings 1 and 2
+       # offsprings 1 and 2
       c1, c2 = self.crossover(self.p1, self.p2)
       self.c1, self.c2 = self.mutate(c1), self.mutate(c2)
       c1_score, c2_score = self.fitness(self.c1), self.fitness(self.c2)
@@ -209,6 +193,9 @@ class GeneticAlgorithm:
     
     _tmp = list(range(len(self.pos_array)))
     random.shuffle(_tmp)
+    while "".join(str(gene) for gene in _tmp) in self.created_solutions:
+      random.shuffle(_tmp)
+
     return _tmp
   
   def crossover(self, parent1, parent2):
